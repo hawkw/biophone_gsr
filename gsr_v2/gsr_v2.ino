@@ -7,20 +7,22 @@
 #define MAX_COND 474 // conductivity if the two pads are in direct contact w/ each other
 #define SAMPLE_RATE 50    // Sleep for 50ms, which provides the recommended sample rate (20Hz)
 #define SPEAKER_PIN 3 // pin for 8ohm speaker, must be PWM
+#define RESET_MS 2000 // milliseconds ebfore reset
 
 
 
 // rolling minimum conductivity
 int min_cond = -999
+// rolling maximum conductivity
   , max_cond = -999
   , r_i = 0
   , bpm = 120;
 
+// milliseconds before reset
+int zero_ms = 0;
 const int whole_note = 1000;
 
-const int r_pin = 9
-        , g_pin = 10
-        , b_pin = 11;
+CommonCathodeLed<9, 10, 11> led = CommonCathodeLed<9, 10, 11>();
 
 int rhythm[] = { 8, 8, 8, 8, 8, 8, 8, 8
                , 4,    4,    8, 8, 8, 8
@@ -119,24 +121,6 @@ int scale[] =
 , NOTE_DS8
 };
 
-int led[] = {10, 11, 12};                                   //10 = redPin, 11 = greenPin, 9 = bluePin
-
-const boolean ON = HIGH;     //Define on as LOW (this is because we use a common
-                            //Anode RGB LED (common pin is connected to +5 volts)
-const boolean OFF = LOW;   //Define off as HIGH
-
-//Predefined Colors
-const boolean RED[] = {ON, OFF, OFF};
-const boolean GREEN[] = {OFF, ON, OFF};
-const boolean BLUE[] = {OFF, OFF, ON};
-const boolean YELLOW[] = {ON, ON, OFF};
-const boolean CYAN[] = {OFF, ON, ON};
-const boolean MAGENTA[] = {ON, OFF, ON};
-const boolean WHITE[] = {ON, ON, ON};
-const boolean BLACK[] = {OFF, OFF, OFF};
-
-//An Array that stores the predefined colors (allows us to later randomly display a color)
-const boolean* COLORS[] = {RED, MAGENTA, YELLOW, GREEN, BLUE, CYAN, WHITE, BLACK};
 
 void setup(){
     Wire.begin(8);                // join i2c bus with address #8
@@ -157,7 +141,10 @@ void loop(){
   // if the sample is greater than zero, play a tone.
   // otherwise, if nobody's touching the contacts, just
   // wait until we get a non-zero reading.
-  if (a > 100) {
+  if (a > 50) {
+
+    // reset the reset clock
+    zero_ms = 0;
 
     if (min_cond == -999 && max_cond == -999) {
       min_cond = max_cond = a;
@@ -173,47 +160,38 @@ void loop(){
     // map the analog input range (min_cond - MAX_COND)
     // to the output pitch range (120 - 1500Hz)
     int thisPitch = map(a, min_cond, max_cond, 0, 88);
-    int thisColor = map(a, min_cond, max_cond, 0, 7);
+    int thisColor = map(a, min_cond, max_cond, 0, 255);
     int note_length = ((bpm / 60) * whole_note) / rhythm[r_i];
-    setColor(led, COLORS[thisColor]);
+
+    // set the LED color
+    led.color = HSVColor(thisColor);
+    led.show();
      // play the pitch for 50ms
     tone(SPEAKER_PIN, scale[thisPitch], note_length);
     // pause between notes
     delay(note_length * 1.30); // TODO: determine if this sounds good
     r_i = (r_i + 1) % 31;
 
-    Serial.print("val: ");
-    Serial.print(a);
-    Serial.print(" min: ");
-    Serial.print(min_cond);
-    Serial.print(" max: ");
-    Serial.println(max_cond);
-
 
   } else {
-    setColor(led, BLACK);
+    led.hide();
     // wait 50ms for a 20hz sample rate
     delay(SAMPLE_RATE);
-    // reset
-    min_cond =  max_cond = -999;
-    r_i = 0;
+    zero_ms += SAMPLE_RATE;
+    if (zero_ms >= RESET_MS) {
+        // reset
+        min_cond = max_cond = -999;
+        r_i = 0;
+        zero_ms = 0;
+    }
+
   }
 
-}
+  Serial.print("val: ");
+  Serial.print(a);
+  Serial.print(" min: ");
+  Serial.print(min_cond);
+  Serial.print(" max: ");
+  Serial.println(max_cond);
 
-/* Sets an led to any color
-   led - a three element array defining the three color pins (led[0] = redPin, led[1] = greenPin, led[2] = bluePin)
-   color - a three element boolean array (color[0] = red value (LOW = on, HIGH = off), color[1] = green value, color[2] =blue value)
-*/
-void setColor(int* led, boolean* color){
- for(int i = 0; i < 3; i++){
-   digitalWrite(led[i], color[i]);
- }
-}
-
-/* A version of setColor that allows for using const boolean colors
-*/
-void setColor(int* led, const boolean* color){
-  boolean tempColor[] = {color[0], color[1], color[2]};
-  setColor(led, tempColor);
 }
