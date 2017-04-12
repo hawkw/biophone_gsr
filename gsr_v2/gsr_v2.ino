@@ -1,21 +1,41 @@
 #include <Arduino.h>
 #include <Wire.h>
-#include "pitches.h"
 #include <ThreeClor.h>
+#include "pitches.h"
+
+/*
+    Define this to have the biophone adaptively calculate the range mapping
+    for observed GSR values based on observed min/max.
+ */
+// #define ADAPTIVE_RANGING
+
+/*
+    Undefine this to disable debugging over serial.
+ */
+#define SERIAL_DEBUG
 
 #define ANALOG_IN A0
-#define MAX_COND 474 // conductivity if the two pads are in direct contact w/ each other
+#define MAX_COND 475 // conductivity if the two pads are in direct contact w/ each other
 #define SAMPLE_RATE 50    // Sleep for 50ms, which provides the recommended sample rate (20Hz)
 #define SPEAKER_PIN 3 // pin for 8ohm speaker, must be PWM
 #define RESET_MS 2000 // milliseconds ebfore reset
 
+// low end cutoff value for GSR - below this is counted as noise.
+#define LOW_CUTOFF 75
 
+#ifdef ADAPTIVE_RANGING
+    // rolling minimum conductivity
+    int min_cond = -999
+    // rolling maximum conductivity
+      , max_cond = -999;
+    #define MIN min_cond
+    #define MAX max_cond
+#else
+    #define MIN LOW_CUTOFF
+    #define MAX MAX_COND
+#endif
 
-// rolling minimum conductivity
-int min_cond = -999
-// rolling maximum conductivity
-  , max_cond = -999
-  , r_i = 0
+int r_i = 0
   , bpm = 120;
 
 // milliseconds before reset
@@ -125,13 +145,17 @@ int scale[] =
 void setup(){
     Wire.begin(8);                // join i2c bus with address #8
     Wire.onReceive(receiveBPM); // register event
+#ifdef SERIAL_DEBUG
     Serial.begin(9600);
+#endif
 }
 
 void receiveBPM(int n) {
     bpm = Wire.read();
+#ifdef SERIAL_DEBUG
     Serial.print(bpm);
     Serial.println(" BPM");
+#endif
 }
 
 void loop(){
@@ -141,11 +165,12 @@ void loop(){
   // if the sample is greater than zero, play a tone.
   // otherwise, if nobody's touching the contacts, just
   // wait until we get a non-zero reading.
-  if (a > 50) {
+  if (a > LOW_CUTOFF) {
 
     // reset the reset clock
     zero_ms = 0;
 
+#ifdef ADAPTIVE_RANGING
     if (min_cond == -999 && max_cond == -999) {
       min_cond = max_cond = a;
     } else if (a < min_cond) {
@@ -156,11 +181,12 @@ void loop(){
     } else if (a > max_cond) {
       max_cond = a;
     }
+#endif
 
     // map the analog input range (min_cond - MAX_COND)
     // to the output pitch range (120 - 1500Hz)
-    int thisPitch = map(a, min_cond, max_cond, 0, 88);
-    int thisColor = map(a, min_cond, max_cond, 0, 255);
+    int thisPitch = map(a, MIN, MAX, 0, 88);
+    int thisColor = map(a, MIN, MAX, 0, 255);
     int note_length = ((bpm / 60) * whole_note) / rhythm[r_i];
 
     // set the LED color
@@ -180,18 +206,24 @@ void loop(){
     zero_ms += SAMPLE_RATE;
     if (zero_ms >= RESET_MS) {
         // reset
+#ifdef ADAPTIVE_RANGING
         min_cond = max_cond = -999;
+#endif
         r_i = 0;
         zero_ms = 0;
     }
 
   }
-
-  Serial.print("val: ");
-  Serial.print(a);
-  Serial.print(" min: ");
-  Serial.print(min_cond);
-  Serial.print(" max: ");
-  Serial.println(max_cond);
+#ifdef SERIAL_DEBUG
+      Serial.print("val: ");
+      Serial.print(a);
+    #ifdef ADAPTIVE_RANGING
+      Serial.print(" min: ");
+      Serial.print(min_cond);
+      Serial.print(" max: ");
+      Serial.print(max_cond);
+    #endif
+      Serial.print("\n");
+#endif
 
 }
