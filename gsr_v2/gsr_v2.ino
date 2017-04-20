@@ -15,7 +15,7 @@
 #define SERIAL_DEBUG
 
 #define ANALOG_IN A0
-#define MAX_COND 475 // conductivity if the two pads are in direct contact w/ each other
+#define MAX_COND 1023 // conductivity if the two pads are in direct contact w/ each other
 #define SAMPLE_RATE 50    // Sleep for 50ms, which provides the recommended sample rate (20Hz)
 #define SPEAKER_PIN 3 // pin for 8ohm speaker, must be PWM
 #define RESET_MS 2000 // milliseconds ebfore reset
@@ -143,19 +143,23 @@ int scale[] =
 
 
 void setup(){
+
+    // analogReference(EXTERNAL);
+
     Wire.begin(8);                // join i2c bus with address #8
     Wire.onReceive(receiveBPM); // register event
+
 #ifdef SERIAL_DEBUG
     Serial.begin(9600);
 #endif
 }
 
 void receiveBPM(int n) {
-    bpm = Wire.read();
-#ifdef SERIAL_DEBUG
-    Serial.print(bpm);
-    Serial.println(" BPM");
-#endif
+    if (n > 1) {
+        int recv = Wire.read();
+        bpm = recv;
+    }
+
 }
 
 void loop(){
@@ -217,6 +221,8 @@ void loop(){
 #ifdef SERIAL_DEBUG
       Serial.print("val: ");
       Serial.print(a);
+      Serial.print(" BPM: ");
+      Serial.print(bpm);
     #ifdef ADAPTIVE_RANGING
       Serial.print(" min: ");
       Serial.print(min_cond);
